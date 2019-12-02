@@ -1,6 +1,5 @@
 import numpy as np
 import os
-from pickle import load, dump
 from load_dataset import load_default
 from data_format import data_processing
 from keras.models import Input, Model
@@ -8,9 +7,10 @@ from keras.layers import LSTM, Dense
 from keras.callbacks import EarlyStopping
 from matplotlib import pyplot
 
-batch_size = 128
+batch_size = 32
 epochs = 50
-num_samples = 512
+num_samples = 1000
+latent_dim = 64
 
 input_texts = []
 target_texts = []
@@ -18,14 +18,14 @@ input_characters = set()
 target_characters = set()
 
 MODELS_PATH = "../models/"
-MODEL_NAME = f"deeplearning_enc_dec_trained_{num_samples}_{batch_size}_{epochs}.h5"
+MODEL_NAME = f"deeplearning_enc_dec_trained_{num_samples}_{batch_size}_{epochs}_{latent_dim}.h5"
 FULL_PATH = MODELS_PATH + MODEL_NAME
 
 df = data_processing((load_default(limit=num_samples)))
 for _, review in df.iterrows():
     input_text = review['reviewText']
     summary = review['summary']
-    target_text = "\t" + summary + "\n"
+    target_text = "\t " + summary + " \n"
     input_texts.append(input_text)
     target_texts.append(target_text)
     for char in input_text:
@@ -59,35 +59,6 @@ encoder_input_data = np.zeros((len(input_texts), max_encoder_seq_length, num_enc
 decoder_input_data = np.zeros((len(input_texts), max_decoder_seq_length, num_decoder_tokens), dtype='float32')
 decoder_target_data = np.zeros((len(input_texts), max_decoder_seq_length, num_decoder_tokens), dtype='float32')
 
-encoder_inputs = Input(shape=(None, num_encoder_tokens))
-encoder = LSTM(max_decoder_seq_length, return_state=True)
-encoder_outputs, state_h, state_c = encoder(encoder_inputs)
-encoder_states = [state_h, state_c]
-
-# define training decoder
-decoder_inputs = Input(shape=(None, num_decoder_tokens))
-decoder_lstm = LSTM(max_decoder_seq_length, return_sequences=True, return_state=True)
-decoder_outputs, _, _ = decoder_lstm(decoder_inputs, initial_state=encoder_states)
-decoder_dense = Dense(num_decoder_tokens, activation='softmax')
-decoder_outputs = decoder_dense(decoder_outputs)
-model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
-
-# define inference encoder
-encoder_model = Model(encoder_inputs, encoder_states)
-
-# define inference decoder
-decoder_state_input_h = Input(shape=(max_decoder_seq_length,))
-decoder_state_input_c = Input(shape=(max_decoder_seq_length,))
-decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
-decoder_outputs, state_h, state_c = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
-decoder_states = [state_h, state_c]
-decoder_outputs = decoder_dense(decoder_outputs)
-decoder_model = Model([decoder_inputs] + decoder_states_inputs, [decoder_outputs] + decoder_states)
-
-reverse_input_char_index = dict(
-    (i, char) for char, i in input_token_index.items())
-reverse_target_char_index = dict(
-    (i, char) for char, i in target_token_index.items())
 for i, (input_text, target_text) in enumerate(zip(input_texts, target_texts)):
     for t, char in enumerate(input_text):
         encoder_input_data[i, t, input_token_index[char]] = 1.
@@ -100,9 +71,35 @@ for i, (input_text, target_text) in enumerate(zip(input_texts, target_texts)):
             decoder_target_data[i, t - 1, target_token_index[char]] = 1.
 
 
-def load_model(name):
-    with open(name, "rb") as f:
-        return load(f)
+encoder_inputs = Input(shape=(None, num_encoder_tokens))
+encoder = LSTM(latent_dim, return_state=True)
+encoder_outputs, state_h, state_c = encoder(encoder_inputs)
+encoder_states = [state_h, state_c]
+
+# define training decoder
+decoder_inputs = Input(shape=(None, num_decoder_tokens))
+decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True)
+decoder_outputs, _, _ = decoder_lstm(decoder_inputs, initial_state=encoder_states)
+decoder_dense = Dense(num_decoder_tokens, activation='softmax')
+decoder_outputs = decoder_dense(decoder_outputs)
+model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
+
+# define inference encoder
+encoder_model = Model(encoder_inputs, encoder_states)
+
+# define inference decoder
+decoder_state_input_h = Input(shape=(latent_dim,))
+decoder_state_input_c = Input(shape=(latent_dim,))
+decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
+decoder_outputs, state_h, state_c = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
+decoder_states = [state_h, state_c]
+decoder_outputs = decoder_dense(decoder_outputs)
+decoder_model = Model([decoder_inputs] + decoder_states_inputs, [decoder_outputs] + decoder_states)
+
+reverse_input_char_index = dict(
+    (i, char) for char, i in input_token_index.items())
+reverse_target_char_index = dict(
+    (i, char) for char, i in target_token_index.items())
 
 
 def decode_sequence(input_seq):
