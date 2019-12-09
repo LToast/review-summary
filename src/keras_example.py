@@ -1,5 +1,3 @@
-from load_dataset import load_default
-from data_format import data_processing
 '''
 #Sequence to sequence example in Keras (character-level).
 
@@ -51,14 +49,17 @@ models are more common in this domain.
     RNN Encoder-Decoder for Statistical Machine Translation
     ](https://arxiv.org/abs/1406.1078)
 '''
+from __future__ import print_function
+
+from keras.callbacks import EarlyStopping
 from keras.models import Model
 from keras.layers import Input, LSTM, Dense
 import numpy as np
 
 batch_size = 64  # Batch size for training.
-epochs = 10  # Number of epochs to train for.
-latent_dim = 128  # Latent dimensionality of the encoding space.
-num_samples = 246  # Number of samples to train on.
+epochs = 100  # Number of epochs to train for.
+latent_dim = 256  # Latent dimensionality of the encoding space.
+num_samples = 10000  # Number of samples to train on.
 # Path to the data txt file on disk.
 data_path = 'fra-eng/fra.txt'
 
@@ -67,11 +68,13 @@ input_texts = []
 target_texts = []
 input_characters = set()
 target_characters = set()
-df = data_processing((load_default(limit=num_samples)))
-for _, review in df.iterrows():
-    input_text = review['reviewText']
-    summary = review['summary']
-    target_text = "\t " + summary + " \n"
+with open(data_path, 'r', encoding='utf-8') as f:
+    lines = f.read().split('\n')
+for line in lines[: min(num_samples, len(lines) - 1)]:
+    input_text, target_text, _ = line.split('\t')
+    # We use "tab" as the "start sequence" character
+    # for the targets, and "\n" as "end sequence" character.
+    target_text = '\t' + target_text + '\n'
     input_texts.append(input_text)
     target_texts.append(target_text)
     for char in input_text:
@@ -147,9 +150,12 @@ model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
 # Run training
 model.compile(optimizer='rmsprop', loss='categorical_crossentropy',
               metrics=['accuracy'])
+
+es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
 model.fit([encoder_input_data, decoder_input_data], decoder_target_data,
           batch_size=batch_size,
           epochs=epochs,
+          callbacks=[es],
           validation_split=0.2)
 # Save model
 model.save('s2s.h5')
