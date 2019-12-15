@@ -7,10 +7,10 @@ from keras.layers import LSTM, Dense
 from keras.callbacks import EarlyStopping
 from matplotlib import pyplot
 
-batch_size = 64
+batch_size = 32
 epochs = 50
-num_samples = 2000
-latent_dim = 256
+num_samples = 25000
+latent_dim = 64
 
 input_texts = []
 target_texts = []
@@ -34,6 +34,15 @@ for _, review in df.iterrows():
     for char in target_text:
         if char not in target_characters:
             target_characters.add(char)
+
+
+for i in range(5):
+    print("Clean Review #", i+1)
+    print(input_texts[i])
+    print(target_texts[i])
+    print()
+
+
 input_characters = sorted(list(input_characters))
 target_characters = sorted(list(target_characters))
 num_encoder_tokens = len(input_characters)
